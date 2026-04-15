@@ -14,28 +14,30 @@ const CELL_COLORS = [
   '#e0e7ff', // indigo-100   — slight purple cast
 ]
 
-export function generateGridData(total: number): { order: number[]; colors: string[] } {
-  const indices = Array.from({ length: total }, (_, i) => i)
+const COLS = 60
+const ROWS = 45
+const TOTAL = COLS * ROWS
+
+export function generateGridData(): { order: number[]; colors: string[] } {
+  const indices = Array.from({ length: TOTAL }, (_, i) => i)
   // Fisher-Yates shuffle
   for (let i = indices.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
     ;[indices[i], indices[j]] = [indices[j], indices[i]]
   }
-  const colors = Array.from({ length: total }, () =>
+  const colors = Array.from({ length: TOTAL }, () =>
     CELL_COLORS[Math.floor(Math.random() * CELL_COLORS.length)]
   )
   return { order: indices, colors }
 }
 
 interface PixelGridProps {
-  cols: number
-  rows: number
   gridOrder: number[]
   cellColors: string[]
   revealedCount: number
 }
 
-export function PixelGrid({ cols, rows, gridOrder, cellColors, revealedCount }: PixelGridProps) {
+export function PixelGrid({ gridOrder, cellColors, revealedCount }: PixelGridProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const prevCountRef = useRef(0)
 
@@ -88,16 +90,14 @@ export function PixelGrid({ cols, rows, gridOrder, cellColors, revealedCount }: 
     prevCountRef.current = curr
   }, [revealedCount, gridOrder])
 
-  const total = cols * rows
-
   return (
     <div
       ref={containerRef}
       className="w-full h-full"
       style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${cols}, 1fr)`,
-        gridTemplateRows: `repeat(${rows}, 1fr)`,
+        gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+        gridTemplateRows: `repeat(${ROWS}, 1fr)`,
         gap: '1px',
         // Force GPU compositing layer so Safari doesn't "upgrade" the
         // container mid-animation (which causes the blur flash).
@@ -106,7 +106,7 @@ export function PixelGrid({ cols, rows, gridOrder, cellColors, revealedCount }: 
       }}
       aria-hidden="true"
     >
-      {Array.from({ length: total }, (_, i) => (
+      {Array.from({ length: TOTAL }, (_, i) => (
         <div
           key={i}
           style={{ backgroundColor: cellColors[i], opacity: 0, transform: 'scale(0)' }}
