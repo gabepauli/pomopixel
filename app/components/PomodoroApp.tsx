@@ -1,8 +1,28 @@
 "use client";
 
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useState, useRef } from "react";
 import { Play, Pause, SkipForward } from "@phosphor-icons/react";
 import { PixelGrid, generateGridData } from "./PixelGrid";
+
+const MIN_CELL_PX = 8;
+const GRID_ASPECT = 4 / 3; // cols / rows ratio
+
+function computeGridDimensions(
+  widthPx: number,
+  heightPx: number
+): { cols: number; rows: number } {
+  // Derive cols from width, rows from height, both floored to multiples
+  // that respect the 4:3 aspect ratio and the minimum cell size.
+  const colsByWidth = Math.floor(widthPx / MIN_CELL_PX);
+  const rowsByHeight = Math.floor(heightPx / MIN_CELL_PX);
+  // Keep ratio: cols / rows ≈ 4/3
+  const colsFromRows = Math.floor(rowsByHeight * GRID_ASPECT);
+  const rowsFromCols = Math.floor(colsByWidth / GRID_ASPECT);
+  // Pick whichever constraint is tighter
+  const cols = Math.min(colsByWidth, colsFromRows);
+  const rows = Math.min(rowsByHeight, rowsFromCols);
+  return { cols: Math.max(cols, 1), rows: Math.max(rows, 1) };
+}
 
 type Phase = "focus" | "shortBreak" | "longBreak";
 
@@ -21,18 +41,37 @@ export function PomodoroApp() {
   const [secondsRemaining, setSecondsRemaining] = useState(DURATIONS.focus);
   const [isRunning, setIsRunning] = useState(false);
   const [cyclesCompleted, setCyclesCompleted] = useState(0);
-  // Stable SSR placeholder — randomized after hydration in useEffect to avoid mismatch
+
+  // Grid dimensions — measured once on mount from the container
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [gridDims, setGridDims] = useState({ cols: 60, rows: 45 });
+  const total = gridDims.cols * gridDims.rows;
+
+  // Stable SSR placeholder — randomized after hydration to avoid mismatch
   const [gridData, setGridData] = useState<{
     order: number[];
     colors: string[];
   }>({
-    order: Array.from({ length: 2700 }, (_, i) => i),
-    colors: Array.from({ length: 2700 }, () => "#4c73ec"),
+    order: Array.from({ length: gridDims.cols * gridDims.rows }, (_, i) => i),
+    colors: Array.from({ length: gridDims.cols * gridDims.rows }, () => "#4c73ec"),
   });
 
-  // Randomize grid after hydration — Math.random() must not run on the server
+  // Measure container once after layout settles, then disconnect
   useEffect(() => {
-    setGridData(generateGridData());
+    if (!gridContainerRef.current) return;
+    let done = false;
+    const ro = new ResizeObserver((entries) => {
+      if (done) return;
+      const rect = entries[0]?.contentRect;
+      if (!rect || rect.width < MIN_CELL_PX * 2 || rect.height < MIN_CELL_PX * 2) return;
+      done = true;
+      ro.disconnect();
+      const dims = computeGridDimensions(rect.width, rect.height);
+      setGridDims(dims);
+      setGridData(generateGridData(dims.cols * dims.rows));
+    });
+    ro.observe(gridContainerRef.current);
+    return () => ro.disconnect();
   }, []);
 
   const advancePhase = useCallback(
@@ -84,8 +123,8 @@ export function PomodoroApp() {
 
   const revealedCount =
     phase === "focus"
-      ? Math.round((1 - secondsRemaining / DURATIONS.focus) * 2700)
-      : Math.round((secondsRemaining / DURATIONS[phase]) * 2700);
+      ? Math.round((1 - secondsRemaining / DURATIONS.focus) * total)
+      : Math.round((secondsRemaining / DURATIONS[phase]) * total);
 
   const minutes = String(Math.floor(secondsRemaining / 60)).padStart(2, "0");
   const seconds = String(secondsRemaining % 60).padStart(2, "0");
@@ -222,10 +261,13 @@ export function PomodoroApp() {
         style={{ animation: "fadeInUp 400ms 300ms ease-out both" }}
       >
         <div
+          ref={gridContainerRef}
           className="w-[min(100cqi,calc(100cqb*4/3))] aspect-[4/3]"
           style={{ backgroundColor: "#4c73ec", padding: "16px" }}
         >
           <PixelGrid
+            cols={gridDims.cols}
+            rows={gridDims.rows}
             gridOrder={gridData.order}
             cellColors={gridData.colors}
             revealedCount={revealedCount}
